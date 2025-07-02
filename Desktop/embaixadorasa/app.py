@@ -334,7 +334,7 @@ def main_dashboard():
 # Página principal
 def main():
     # Verificar logout
-    query_params = st.experimental_get_query_params()
+    query_params = st.query_params
     if 'logout' in query_params:
         st.session_state.clear()
         st.experimental_set_query_params()  # limpa a query string
