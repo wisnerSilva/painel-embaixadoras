@@ -6,7 +6,19 @@ from supabase import create_client
 import datetime
 import time
 import numpy as np
+hide_streamlit_style = """
+    <style>
+        /* Esconde o menu superior (incluindo o "Fork" do GitHub) */
+        #MainMenu { visibility: hidden; }
 
+        /* Se quiser esconder também a barra de cabeçalho que aparece em alguns deploys */
+        header { visibility: hidden; }
+
+        /* Esconde o rodapé "Made with Streamlit" */
+        footer { visibility: hidden; }
+    </style>
+"""
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 # Configurações da página
 st.set_page_config(
     page_title="Painel Embaixadoras",
