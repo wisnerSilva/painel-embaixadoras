@@ -107,6 +107,10 @@ def main_dashboard():
             padding: 5px 10px;
             border-radius: 4px;
             cursor: pointer;
+            text-decoration: none;
+        }}
+        .topbar-logout:hover {{
+            background: rgba(255,255,255,0.1);
         }}
         </style>
         <div class="topbar">
@@ -117,7 +121,7 @@ def main_dashboard():
             <div class="topbar-welcome">
                 Bem-vindo, <strong>{st.session_state['user_email']}</strong>
             </div>
-            <button class="topbar-logout" onclick="window.location.href='?logout=true'">Sair</button>
+            <a class="topbar-logout" href="?logout=true">Sair</a>
         </div>
         """, 
         unsafe_allow_html=True
@@ -343,13 +347,13 @@ def main_dashboard():
 # Página principal
 def main():
     # Verificar logout
-    query_params = st.experimental_get_query_params()
-    if 'logout' in query_params:
+    if "logout" in st.query_params:
         st.session_state.clear()
-        st.experimental_set_query_params()  # limpa a query string
+        # Limpar o parâmetro de logout da URL
+        st.query_params.clear()
         st.success("Você foi desconectado com sucesso!")
         time.sleep(1)
-        st.experimental_rerun()
+        st.rerun()
     
     # Verificar autenticação
     if 'authenticated' not in st.session_state or not st.session_state['authenticated']:
