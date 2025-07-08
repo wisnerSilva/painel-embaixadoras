@@ -48,14 +48,15 @@ def formatar_mes(dt):
              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     return f"{meses[dt.month - 1]} {dt.year}"
 
-# Função para gerar meses do ano atual em ordem decrescente
-def gerar_meses_descendentes():
+# Função para gerar meses em ordem cronológica
+def gerar_meses_cronologicos():
     hoje = datetime.datetime.now()
     mes_atual = hoje.month
     ano_atual = hoje.year
     
+    # Lista de todos os meses do ano atual em ordem cronológica
     meses = []
-    for mes in range(mes_atual, 0, -1):
+    for mes in range(1, mes_atual + 1):
         meses.append(datetime.datetime(ano_atual, mes, 1))
     
     return meses
@@ -176,7 +177,7 @@ def main_dashboard():
         if 'Sessões' not in df_pivot.columns:
             df_pivot['Sessões'] = 0
         
-        # NOVO FILTRO: Manter apenas meses com sessões OU vendas > 0
+        # Manter apenas meses com sessões OU vendas > 0
         df_pivot = df_pivot[(df_pivot['Sessões'] > 0) | (df_pivot['Vendas'] > 0)]
         
         if df_pivot.empty:
@@ -190,25 +191,27 @@ def main_dashboard():
         )
         df_pivot['Taxa de Conversão'] = df_pivot['Taxa de Conversão'].round(1)
         
-        # Ordenar por mês
+        # Ordenar por mês (ordem cronológica)
         df_pivot = df_pivot.sort_values('mes')
         
         # Calcular variação percentual da taxa de conversão
         df_pivot['Variação Percentual'] = df_pivot['Taxa de Conversão'].pct_change() * 100
         df_pivot['Variação Percentual'] = df_pivot['Variação Percentual'].fillna(0).round(1)
         
-        # GERAR TODOS OS MESES DO ANO ATUAL (ORDEM DECRESCENTE)
-        todos_meses = gerar_meses_descendentes()
+        # GERAR TODOS OS MESES DO ANO ATUAL EM ORDEM CRONOLÓGICA
+        todos_meses = gerar_meses_cronologicos()
         meses_formatados = [formatar_mes(m) for m in todos_meses]
         meses_dict = {formatar_mes(m): m for m in todos_meses}
         
     # Filtro de mês
     col1, col2 = st.columns([0.7, 0.3])
     with col2:
+        # Selecionar o último mês como padrão
+        default_index = len(meses_formatados) - 1 if meses_formatados else 0
         mes_selecionado = st.selectbox(
             "Selecione o mês:",
             options=meses_formatados,
-            index=0  # Mês atual como padrão
+            index=default_index
         )
     
     # Cards de resumo
@@ -247,17 +250,19 @@ def main_dashboard():
         )
     
     with col3:
+        delta_value = f"{variacao}%" if variacao != 0 else None
         st.metric(
             label="TAXA DE CONVERSÃO",
-            value=f"{taxa}%" if sessoes > 0 else "N/A",
-            delta=f"{variacao}%" if 'Variação Percentual' in dados_mes and sessoes > 0 else None,
+            value=f"{taxa}%" if sessoes > 0 else "0%",
+            delta=delta_value,
+            delta_color="normal",
             help=f"Taxa de conversão em {mes_selecionado}"
         )
     
-    # Histórico mensal - AGORA COM TODOS OS MESES
+    # Histórico mensal - AGORA EM ORDEM CRONOLÓGICA
     st.subheader("Histórico Mensal")
     
-    # Criar DataFrame com todos os meses
+    # Criar DataFrame com todos os meses em ordem cronológica
     historico_completo = []
     for mes in todos_meses:
         mes_formatado = formatar_mes(mes)
@@ -289,7 +294,7 @@ def main_dashboard():
     total_vendas = int(meses_com_dados['Vendas'].sum())
     taxa_geral = (total_vendas / total_sessoes * 100) if total_sessoes > 0 else 0
     
-    # Exibir tabela
+    # Exibir tabela em ordem cronológica
     st.dataframe(
         df_historico,
         hide_index=True,
@@ -310,10 +315,10 @@ def main_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
-    # Gráficos - AGORA COM TODOS OS MESES
+    # Gráficos - AGORA EM ORDEM CRONOLÓGICA
     st.subheader("Análise Gráfica")
     
-    # Preparar dados completos para gráficos
+    # Preparar dados completos para gráficos em ordem cronológica
     dados_graficos = []
     for mes in todos_meses:
         mes_formatado = mes.strftime('%b/%Y')
@@ -341,7 +346,7 @@ def main_dashboard():
     
     df_graficos = pd.DataFrame(dados_graficos)
     
-    # Criar os 4 gráficos
+    # Criar os 4 gráficos em ordem cronológica
     col1, col2 = st.columns(2)
     
     # Gráfico 1: Sessões
@@ -413,7 +418,7 @@ def main_dashboard():
             color='Variação Percentual',
             color_continuous_scale=px.colors.diverging.RdYlGn,
             range_color=[-100, 100],
-            text_auto='.1f%'
+            text=df_graficos['Variação Percentual'].apply(lambda x: f"{x:.1f}%" if x != 0 else "")
         )
         fig4.update_layout(
             xaxis_title='',
