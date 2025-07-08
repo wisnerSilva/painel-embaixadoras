@@ -36,7 +36,7 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# Função para buscar dados do Supabase - REMOVIDO FILTRO gt("valor", 0)
+# Função para buscar dados do Supabase
 @st.cache_data(ttl=0)
 def fetch_data(email):
     response = supabase.table(SUPABASE_TABLE).select("*").eq("email", email).order("mes").execute()
@@ -47,6 +47,18 @@ def formatar_mes(dt):
     meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
     return f"{meses[dt.month - 1]} {dt.year}"
+
+# Função para gerar meses do ano atual em ordem decrescente
+def gerar_meses_descendentes():
+    hoje = datetime.datetime.now()
+    mes_atual = hoje.month
+    ano_atual = hoje.year
+    
+    meses = []
+    for mes in range(mes_atual, 0, -1):
+        meses.append(datetime.datetime(ano_atual, mes, 1))
+    
+    return meses
 
 # Tela de login
 def login_screen():
@@ -185,10 +197,10 @@ def main_dashboard():
         df_pivot['Variação Percentual'] = df_pivot['Taxa de Conversão'].pct_change() * 100
         df_pivot['Variação Percentual'] = df_pivot['Variação Percentual'].fillna(0).round(1)
         
-        # Lista de meses para seleção
-        meses_disponiveis = df_pivot['mes'].unique()
-        meses_formatados = [formatar_mes(m) for m in meses_disponiveis]
-        meses_dict = dict(zip(meses_formatados, meses_disponiveis))
+        # GERAR TODOS OS MESES DO ANO ATUAL (ORDEM DECRESCENTE)
+        todos_meses = gerar_meses_descendentes()
+        meses_formatados = [formatar_mes(m) for m in todos_meses]
+        meses_dict = {formatar_mes(m): m for m in todos_meses}
         
     # Filtro de mês
     col1, col2 = st.columns([0.7, 0.3])
@@ -196,7 +208,7 @@ def main_dashboard():
         mes_selecionado = st.selectbox(
             "Selecione o mês:",
             options=meses_formatados,
-            index=len(meses_formatados)-1
+            index=0  # Mês atual como padrão
         )
     
     # Cards de resumo
@@ -204,41 +216,77 @@ def main_dashboard():
     col1, col2, col3 = st.columns(3)
     
     # Filtrar dados para o mês selecionado
-    dados_mes = df_pivot[df_pivot['mes'] == meses_dict[mes_selecionado]].iloc[0]
+    mes_data = meses_dict[mes_selecionado]
+    dados_mes = df_pivot[df_pivot['mes'] == mes_data]
+    
+    # Valores padrão se não houver dados
+    sessoes = 0
+    vendas = 0
+    taxa = 0
+    variacao = 0
+    
+    if not dados_mes.empty:
+        dados_mes = dados_mes.iloc[0]
+        sessoes = int(dados_mes['Sessões'])
+        vendas = int(dados_mes['Vendas'])
+        taxa = dados_mes['Taxa de Conversão']
+        variacao = dados_mes.get('Variação Percentual', 0)
     
     with col1:
         st.metric(
             label="SESSÕES REALIZADAS",
-            value=int(dados_mes['Sessões']),
+            value=sessoes,
             help=f"Total de sessões em {mes_selecionado}"
         )
     
     with col2:
         st.metric(
             label="VENDAS CONCLUÍDAS",
-            value=int(dados_mes['Vendas']),
+            value=vendas,
             help=f"Total de vendas em {mes_selecionado}"
         )
     
     with col3:
         st.metric(
             label="TAXA DE CONVERSÃO",
-            value=f"{dados_mes['Taxa de Conversão']}%",
-            delta=f"{dados_mes['Variação Percentual']}%" if 'Variação Percentual' in dados_mes else None,
+            value=f"{taxa}%" if sessoes > 0 else "N/A",
+            delta=f"{variacao}%" if 'Variação Percentual' in dados_mes and sessoes > 0 else None,
             help=f"Taxa de conversão em {mes_selecionado}"
         )
     
-    # Histórico mensal
+    # Histórico mensal - AGORA COM TODOS OS MESES
     st.subheader("Histórico Mensal")
     
-    # Formatar a tabela
-    df_historico = df_pivot[['mes', 'Sessões', 'Vendas', 'Taxa de Conversão', 'Variação Percentual']].copy()
-    df_historico['Mês/Ano'] = df_historico['mes'].apply(formatar_mes)
-    df_historico = df_historico[['Mês/Ano', 'Sessões', 'Vendas', 'Taxa de Conversão', 'Variação Percentual']]
+    # Criar DataFrame com todos os meses
+    historico_completo = []
+    for mes in todos_meses:
+        mes_formatado = formatar_mes(mes)
+        dados = df_pivot[df_pivot['mes'] == mes]
+        
+        if not dados.empty:
+            linha = dados.iloc[0]
+            historico_completo.append({
+                'Mês/Ano': mes_formatado,
+                'Sessões': int(linha['Sessões']),
+                'Vendas': int(linha['Vendas']),
+                'Taxa de Conversão': linha['Taxa de Conversão'],
+                'Variação Percentual': linha.get('Variação Percentual', 0)
+            })
+        else:
+            historico_completo.append({
+                'Mês/Ano': mes_formatado,
+                'Sessões': 0,
+                'Vendas': 0,
+                'Taxa de Conversão': 0,
+                'Variação Percentual': 0
+            })
     
-    # Calcular totais
-    total_sessoes = df_historico['Sessões'].sum()
-    total_vendas = df_historico['Vendas'].sum()
+    df_historico = pd.DataFrame(historico_completo)
+    
+    # Calcular totais apenas dos meses com dados
+    meses_com_dados = df_pivot[['Sessões', 'Vendas']]
+    total_sessoes = int(meses_com_dados['Sessões'].sum())
+    total_vendas = int(meses_com_dados['Vendas'].sum())
     taxa_geral = (total_vendas / total_sessoes * 100) if total_sessoes > 0 else 0
     
     # Exibir tabela
@@ -262,25 +310,50 @@ def main_dashboard():
     </div>
     """, unsafe_allow_html=True)
     
-    # Gráficos
+    # Gráficos - AGORA COM TODOS OS MESES
     st.subheader("Análise Gráfica")
     
-    # Formatar datas para eixo X
-    df_pivot['Mes_Formatado'] = df_pivot['mes'].dt.strftime('%b/%Y')
+    # Preparar dados completos para gráficos
+    dados_graficos = []
+    for mes in todos_meses:
+        mes_formatado = mes.strftime('%b/%Y')
+        dados = df_pivot[df_pivot['mes'] == mes]
+        
+        if not dados.empty:
+            linha = dados.iloc[0]
+            dados_graficos.append({
+                'mes': mes,
+                'Mes_Formatado': mes_formatado,
+                'Sessões': linha['Sessões'],
+                'Vendas': linha['Vendas'],
+                'Taxa de Conversão': linha['Taxa de Conversão'],
+                'Variação Percentual': linha.get('Variação Percentual', 0)
+            })
+        else:
+            dados_graficos.append({
+                'mes': mes,
+                'Mes_Formatado': mes_formatado,
+                'Sessões': 0,
+                'Vendas': 0,
+                'Taxa de Conversão': 0,
+                'Variação Percentual': 0
+            })
     
-    # Criar os 4 gráficos solicitados
+    df_graficos = pd.DataFrame(dados_graficos)
+    
+    # Criar os 4 gráficos
     col1, col2 = st.columns(2)
     
-    # Gráfico 1: Sessões mês a mês (colunas) com valores nas barras
+    # Gráfico 1: Sessões
     with col1:
         fig1 = px.bar(
-            df_pivot,
+            df_graficos,
             x='Mes_Formatado',
             y='Sessões',
             labels={'Sessões': 'Quantidade', 'Mes_Formatado': 'Mês'},
             title='SESSÕES REALIZADAS',
-            color_discrete_sequence=['#FF4F00'],  # Laranja
-            text_auto=True  # Mostra valores nas barras
+            color_discrete_sequence=['#FF4F00'],
+            text_auto=True
         )
         fig1.update_layout(
             xaxis_title='',
@@ -289,16 +362,16 @@ def main_dashboard():
         )
         st.plotly_chart(fig1, use_container_width=True)
     
-    # Gráfico 2: Vendas mês a mês (colunas) com valores nas barras
+    # Gráfico 2: Vendas
     with col2:
         fig2 = px.bar(
-            df_pivot,
+            df_graficos,
             x='Mes_Formatado',
             y='Vendas',
             labels={'Vendas': 'Quantidade', 'Mes_Formatado': 'Mês'},
             title='VENDAS CONCLUÍDAS',
-            color_discrete_sequence=['#67BCBF'],  # Verde
-            text_auto=True  # Mostra valores nas barras
+            color_discrete_sequence=['#67BCBF'],
+            text_auto=True
         )
         fig2.update_layout(
             xaxis_title='',
@@ -309,19 +382,19 @@ def main_dashboard():
     
     col3, col4 = st.columns(2)
     
-    # Gráfico 3: Taxa de conversão (linha) com valores nos pontos
+    # Gráfico 3: Taxa de conversão
     with col3:
         fig3 = px.line(
-            df_pivot,
+            df_graficos,
             x='Mes_Formatado',
             y='Taxa de Conversão',
             labels={'Taxa de Conversão': 'Taxa (%)', 'Mes_Formatado': 'Mês'},
             title='TAXA DE CONVERSÃO',
             markers=True,
-            color_discrete_sequence=['#FFD700'],  # Amarelo
-            text=df_pivot['Taxa de Conversão'].apply(lambda x: f"{x}%")  # Adiciona texto aos pontos
+            color_discrete_sequence=['#FFD700'],
+            text=df_graficos['Taxa de Conversão'].apply(lambda x: f"{x}%" if x > 0 else "")
         )
-        fig3.update_traces(textposition="top center")  # Posiciona o texto
+        fig3.update_traces(textposition="top center")
         fig3.update_layout(
             xaxis_title='',
             yaxis_title='Taxa de Conversão (%)',
@@ -329,10 +402,10 @@ def main_dashboard():
         )
         st.plotly_chart(fig3, use_container_width=True)
     
-    # Gráfico 4: Variação percentual da taxa (colunas) com valores
+    # Gráfico 4: Variação percentual
     with col4:
         fig4 = px.bar(
-            df_pivot,
+            df_graficos,
             x='Mes_Formatado',
             y='Variação Percentual',
             labels={'Variação Percentual': 'Variação (%)', 'Mes_Formatado': 'Mês'},
@@ -340,7 +413,7 @@ def main_dashboard():
             color='Variação Percentual',
             color_continuous_scale=px.colors.diverging.RdYlGn,
             range_color=[-100, 100],
-            text_auto='.1f%'  # Formata os valores com 1 casa decimal
+            text_auto='.1f%'
         )
         fig4.update_layout(
             xaxis_title='',
@@ -348,9 +421,7 @@ def main_dashboard():
             yaxis=dict(ticksuffix='%'),
             coloraxis_showscale=False
         )
-        fig4.update_traces(
-            textposition='outside'
-        )
+        fig4.update_traces(textposition='outside')
         st.plotly_chart(fig4, use_container_width=True)
     
     # Rodapé
@@ -362,7 +433,6 @@ def main():
     # Verificar logout
     if "logout" in st.query_params:
         st.session_state.clear()
-        # Limpar o parâmetro de logout da URL
         st.query_params.clear()
         st.success("Você foi desconectado com sucesso!")
         time.sleep(1)
