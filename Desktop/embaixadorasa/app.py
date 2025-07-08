@@ -158,7 +158,13 @@ def main_dashboard():
         df_pivot = df_grouped.pivot(index='mes', columns='tipo', values='valor').reset_index()
         df_pivot.fillna(0, inplace=True)
         
-        # Calcular a taxa de conversão com tratamento para divisão por zero
+        # CORREÇÃO: Garantir que as colunas necessárias existem
+        if 'Vendas' not in df_pivot.columns:
+            df_pivot['Vendas'] = 0
+        if 'Sessões' not in df_pivot.columns:
+            df_pivot['Sessões'] = 0
+        
+        # CORREÇÃO: Calcular a taxa de conversão com tratamento seguro
         df_pivot['Taxa de Conversão'] = df_pivot.apply(
             lambda row: (row['Vendas'] / row['Sessões']) * 100 if row['Sessões'] > 0 else 0,
             axis=1
