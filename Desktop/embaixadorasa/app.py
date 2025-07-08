@@ -36,13 +36,13 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# Função para buscar dados do Supabase
-@st.cache_data(ttl=0)  # Cache desativado para testes de atualização
+# Função para buscar dados do Supabase - REMOVIDO FILTRO gt("valor", 0)
+@st.cache_data(ttl=0)
 def fetch_data(email):
-    response = supabase.table(SUPABASE_TABLE).select("*").eq("email", email).gt("valor", 0).order("mes").execute()
+    response = supabase.table(SUPABASE_TABLE).select("*").eq("email", email).order("mes").execute()
     return pd.DataFrame(response.data)
 
-# Função para formatar o mês (ajustada para lidar com datetime)
+# Função para formatar o mês
 def formatar_mes(dt):
     meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", 
              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
@@ -158,13 +158,20 @@ def main_dashboard():
         df_pivot = df_grouped.pivot(index='mes', columns='tipo', values='valor').reset_index()
         df_pivot.fillna(0, inplace=True)
         
-        # CORREÇÃO: Garantir que as colunas necessárias existem
+        # Garantir que as colunas necessárias existem
         if 'Vendas' not in df_pivot.columns:
             df_pivot['Vendas'] = 0
         if 'Sessões' not in df_pivot.columns:
             df_pivot['Sessões'] = 0
         
-        # CORREÇÃO: Calcular a taxa de conversão com tratamento seguro
+        # NOVO FILTRO: Manter apenas meses com sessões OU vendas > 0
+        df_pivot = df_pivot[(df_pivot['Sessões'] > 0) | (df_pivot['Vendas'] > 0)]
+        
+        if df_pivot.empty:
+            st.warning("Nenhum dado positivo encontrado para este usuário.")
+            return
+        
+        # Calcular a taxa de conversão com tratamento seguro
         df_pivot['Taxa de Conversão'] = df_pivot.apply(
             lambda row: (row['Vendas'] / row['Sessões']) * 100 if row['Sessões'] > 0 else 0,
             axis=1
